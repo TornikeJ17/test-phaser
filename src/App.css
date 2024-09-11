@@ -1,0 +1,14 @@
+body {
+    display: grid;
+    justify-content: center;
+    align-items: center;
+}
+#phaser-game {
+    width: 400px;
+    height: 400px;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid #000;
+}
+
