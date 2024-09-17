@@ -1,5 +1,7 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import ReactDOM from "react-dom";
 import Phaser from "phaser";
+import Reel from "./Reels/Reel";
 import "../App.css";
 import { svgIcons } from "./svg";
 import spin from "./sounds/spin.mp3";
@@ -7,12 +9,17 @@ import win from "./sounds/win.wav";
 
 const REEL_WIDTH = 100;
 const REEL_HEIGHT = 100;
+let winMessage: Phaser.GameObjects.Text | null = null;
+let spinSound: Phaser.Sound.BaseSound | null = null;
+let winSound: Phaser.Sound.BaseSound | null = null;
 
 const PhaserGame: React.FC = () => {
     const gameRef = useRef<HTMLDivElement>(null);
-    let winMessage: Phaser.GameObjects.Text | null = null;
-    let spinSound: Phaser.Sound.BaseSound | null = null;
-    let winSound: Phaser.Sound.BaseSound | null = null;
+    const reactMountRef = useRef<HTMLDivElement>(null);
+    const reelsRef = useRef<any[]>([]);
+    const spinButtonRef = useRef<Phaser.GameObjects.Text | null>(null);
+
+    const [isSpinning, setIsSpinning] = useState(false);
 
     useEffect(() => {
         const config: Phaser.Types.Core.GameConfig = {
@@ -36,44 +43,81 @@ const PhaserGame: React.FC = () => {
     }, []);
 
     const preload = function (this: Phaser.Scene) {
-        this.load.image("symbol1", svgIcons[0].base64);
-        this.load.image("symbol2", svgIcons[1].base64);
-        this.load.image("symbol3", svgIcons[2].base64);
-        this.load.image("symbol4", svgIcons[3].base64);
-        this.load.image("symbol5", svgIcons[4].base64);
+        svgIcons.forEach((icon) => {
+            this.load.image(icon.name, icon.base64);
+        });
 
         this.load.audio("spin", spin);
         this.load.audio("win", win);
     };
 
+    const _createMask = function (
+        scene: Phaser.Scene,
+        x: number,
+        y: number,
+        width: number,
+        height: number
+    ) {
+        const shape = scene.make.graphics({ x, y });
+        shape.fillRect(0, 0, width, height);
+        const mask = shape.createGeometryMask();
+        return mask;
+    };
+
     const create = function (this: Phaser.Scene) {
-        const reels: Phaser.GameObjects.Image[][] = [];
-
         spinSound = this.sound.add("spin");
-        // 3x3 grid for symbols
-        for (let i = 0; i < 3; i++) {
-            reels[i] = [];
-            for (let j = 0; j < 3; j++) {
-                const randomSymbol = Phaser.Math.Between(1, 3);
-                reels[i][j] = this.add.image(
-                    100 + i * REEL_WIDTH,
-                    100 + j * REEL_HEIGHT,
-                    `symbol${randomSymbol}`
-                );
-            }
-        }
-        //Spin Button
+        winSound = this.sound.add("win");
 
-        this.add
+        const reelMask = _createMask(
+            this,
+            50,
+            50,
+            REEL_WIDTH * 3,
+            REEL_HEIGHT * 2.7
+        );
+
+        ReactDOM.render(
+            <>
+                <Reel
+                    scene={this}
+                    x={100}
+                    y={100}
+                    reelWidth={REEL_WIDTH}
+                    reelHeight={REEL_HEIGHT}
+                    mask={reelMask}
+                    addReel={(reel) => reelsRef.current.push(reel)}
+                />
+                <Reel
+                    scene={this}
+                    x={200}
+                    y={100}
+                    reelWidth={REEL_WIDTH}
+                    reelHeight={REEL_HEIGHT}
+                    mask={reelMask}
+                    addReel={(reel) => reelsRef.current.push(reel)}
+                />
+                <Reel
+                    scene={this}
+                    x={300}
+                    y={100}
+                    reelWidth={REEL_WIDTH}
+                    reelHeight={REEL_HEIGHT}
+                    mask={reelMask}
+                    addReel={(reel) => reelsRef.current.push(reel)}
+                />
+            </>,
+            reactMountRef.current
+        );
+
+        spinButtonRef.current = this.add
             .text(150, 350, "SPIN", { fontSize: "32px", color: "#FFF" })
-            .setInteractive()
+            .setInteractive({ useHandCursor: true })
             .on("pointerdown", () => {
-                resetWinMessage.call(this);
-                if (spinSound) {
-                    spinSound.play();
+                if (!isSpinning) {
+                    startSpin.call(this);
                 }
-                spinReels.call(this, reels);
             });
+
         const borderThickness = 1;
         const borderColor = 0xff0000;
 
@@ -82,64 +126,98 @@ const PhaserGame: React.FC = () => {
                 100 + REEL_WIDTH,
                 100 + REEL_HEIGHT,
                 REEL_WIDTH * 3,
-                REEL_HEIGHT,
-                0xffffff,
-                0
+                REEL_HEIGHT
             )
             .setStrokeStyle(borderThickness, borderColor);
     };
 
-    const spinReels = function (
-        this: Phaser.Scene,
-        reels: Phaser.GameObjects.Image[][]
-    ) {
-        const spinDistance = REEL_HEIGHT * 2;
-        const spinSpeed = 200;
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) {
-                this.tweens.add({
-                    targets: reels[i][j],
-                    y: `+=${spinDistance}`,
-                    duration: spinSpeed,
-                    ease: "Linear",
-                    repeat: 4,
-                    onComplete: () => {
-                        const randomSymbol = Phaser.Math.Between(1, 5);
-                        reels[i][j].setTexture(`symbol${randomSymbol}`);
-                        reels[i][j].setY(reels[i][j].y - spinDistance);
+    const startSpin = function (this: Phaser.Scene) {
+        resetWinMessage.call(this);
+        if (spinSound) {
+            spinSound.play();
+        }
 
-                        //check middle row for win
-                        if (i === 2 && j === 2) {
-                            checkForWin.call(this, reels);
+        if (spinButtonRef.current) {
+            spinButtonRef.current.disableInteractive();
+        }
+
+        setIsSpinning(true);
+        spinReels.call(this);
+    };
+
+    const spinReels = function (this: Phaser.Scene) {
+        const symbols = ["heart", "cherry", "orange", "seven", "diamond"];
+        const stopDelays = [500, 1000, 1500];
+        let totalSpins = 0;
+
+        reelsRef.current.forEach((reel, reelIndex) => {
+            reel.forEach((slot: Phaser.GameObjects.Image) => {
+                this.tweens.add({
+                    targets: slot,
+                    y: slot.y + REEL_HEIGHT * 3,
+                    duration: 500,
+                    ease: "Cubic.easeOut",
+                    delay: stopDelays[reelIndex],
+                    onComplete: () => {
+                        slot.setY(slot.y - REEL_HEIGHT * 3);
+
+                        const randomSymbol = Phaser.Math.Between(
+                            0,
+                            symbols.length - 1
+                        );
+                        slot.setTexture(symbols[randomSymbol]);
+
+                        totalSpins++;
+                        if (totalSpins === reelsRef.current.length * 3) {
+                            setIsSpinning(false);
+                            if (spinButtonRef.current) {
+                                spinButtonRef.current.setInteractive();
+                            }
+                            // Call checkForWin with the correct `this` context
+                            checkForWin.call(this);
                         }
                     },
                 });
-            }
-        }
+            });
+        });
     };
 
-    const checkForWin = function (
-        this: Phaser.Scene,
-        reels: Phaser.GameObjects.Image[][]
-    ) {
-        winSound = this.sound.add("win");
+    const checkForWin = function (this: Phaser.Scene) {
+        const middleRow = reelsRef.current.map(
+            (reel: Phaser.GameObjects.Image[]) => reel[1]
+        );
 
-        const middleRowSymbols = [
-            reels[0][1].texture.key,
-            reels[1][1].texture.key,
-            reels[2][1].texture.key,
-        ];
+        const firstSymbolTexture = middleRow[0].texture.key;
+        const isWin = middleRow.every(
+            (slot) => slot.texture.key === firstSymbolTexture
+        );
 
-        if (
-            middleRowSymbols[0] === middleRowSymbols[1] &&
-            middleRowSymbols[1] === middleRowSymbols[2]
-        ) {
+        if (isWin) {
             if (winSound) {
                 winSound.play();
             }
-            winMessage = this.add.text(150, 200, "You Won!", {
+
+            winMessage = this.add.text(140, 180, "YOU WIN!", {
                 fontSize: "32px",
-                color: "#0f0",
+                color: "green",
+            });
+
+            this.tweens.add({
+                targets: winMessage,
+                scale: { from: 0, to: 1 },
+                alpha: { from: 0, to: 1 },
+                duration: 1000,
+                ease: "Bounce.easeOut",
+                onComplete: () => {
+                    this.tweens.add({
+                        targets: winMessage,
+                        scale: { from: 1, to: 1.2 },
+                        yoyo: true,
+                        repeat: -1,
+                        duration: 500,
+                        ease: "Sine.easeInOut",
+                    });
+                },
             });
         }
     };
@@ -150,8 +228,17 @@ const PhaserGame: React.FC = () => {
             winMessage = null;
         }
     };
+
     const update = function (this: Phaser.Scene) {};
-    return <div ref={gameRef} id="phaser-game" />;
+
+    return (
+        <div className="slot-game">
+            <div className="slot-machine-frame">
+                <div ref={gameRef}></div>
+                <div ref={reactMountRef}></div>{" "}
+            </div>
+        </div>
+    );
 };
 
 export default PhaserGame;
