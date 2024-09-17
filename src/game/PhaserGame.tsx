@@ -118,7 +118,7 @@ const PhaserGame: React.FC = () => {
                 }
             });
 
-        const borderThickness = 1;
+        const borderThickness = 1.5;
         const borderColor = 0xff0000;
 
         this.add
@@ -148,32 +148,41 @@ const PhaserGame: React.FC = () => {
     const spinReels = function (this: Phaser.Scene) {
         const symbols = ["heart", "cherry", "orange", "seven", "diamond"];
         const stopDelays = [500, 1000, 1500];
+        const spinSpeed = 300;
+        const spinsPerReel = 4;
+        const visibleSymbols = 3;
         let totalSpins = 0;
 
         reelsRef.current.forEach((reel, reelIndex) => {
             reel.forEach((slot: Phaser.GameObjects.Image) => {
                 this.tweens.add({
                     targets: slot,
-                    y: slot.y + REEL_HEIGHT * 3,
-                    duration: 500,
-                    ease: "Cubic.easeOut",
+                    y: slot.y + REEL_HEIGHT * visibleSymbols,
+                    duration: spinSpeed,
+                    ease: "Linear",
+                    repeat: spinsPerReel,
                     delay: stopDelays[reelIndex],
-                    onComplete: () => {
-                        slot.setY(slot.y - REEL_HEIGHT * 3);
+                    onUpdate: () => {
+                        if (slot.y > REEL_HEIGHT * visibleSymbols) {
+                            slot.setY(slot.y - REEL_HEIGHT * visibleSymbols);
+                        }
+                    },
 
-                        const randomSymbol = Phaser.Math.Between(
+                    onComplete: () => {
+                        const finalSymbolIndex = Phaser.Math.Between(
                             0,
                             symbols.length - 1
                         );
-                        slot.setTexture(symbols[randomSymbol]);
-
+                        slot.setTexture(symbols[finalSymbolIndex]);
                         totalSpins++;
-                        if (totalSpins === reelsRef.current.length * 3) {
+                        if (
+                            totalSpins ===
+                            reelsRef.current.length * visibleSymbols
+                        ) {
                             setIsSpinning(false);
                             if (spinButtonRef.current) {
                                 spinButtonRef.current.setInteractive();
                             }
-                            // Call checkForWin with the correct `this` context
                             checkForWin.call(this);
                         }
                     },
